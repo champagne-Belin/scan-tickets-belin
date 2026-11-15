@@ -32,7 +32,7 @@
 </style>
 </head>
 <body>
-<header>🍾 Scan tickets — Passerelle <small style="opacity:.6">v5</small></header>
+<header>🍾 Scan tickets — Passerelle <small style="opacity:.6">v6</small></header>
 <main>
   <label class="btn primary" for="cam">📷 Photographier un ticket</label>
   <input id="cam" type="file" accept="image/*" capture="environment">
@@ -65,6 +65,7 @@
   </div>
 
   <button class="send" id="send" disabled>Envoyer vers SharePoint</button>
+  <button class="ghost" id="annuler" style="display:none">✖ Annuler ce ticket</button>
   <div id="status"></div>
   <button class="ghost" id="maj" style="font-size:15px;padding:12px">🔄 Mettre à jour l'appli</button>
 </main>
@@ -127,26 +128,31 @@ async function buildPdf() {
   return pdfB64;
 }
 
+let ctrl = null, session = 0;
 async function appel(payload) {
   assureCle(); assureQui();
-  const r = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cle: CLE, qui: QUI, ...payload }) });
+  ctrl = new AbortController();
+  const r = await fetch(WEBHOOK_URL, { signal: ctrl.signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cle: CLE, qui: QUI, ...payload }) });
   if (!r.ok) throw new Error(r.status);
   return r.text();
 }
 
 // ---------- Lecture du ticket (Claude via Make) ----------
 async function lireTicket() {
+  const sid = session;
   $('form').style.display = 'block';
   $('f-date').value = ''; $('f-ens').value = ''; $('f-mnt').value = ''; majNom();
   setStatus('Lecture du ticket…');
   try {
     const rep = await appel({ action: 'lire', data: await buildPdf() });
+    if (sid !== session) return;
     const [date, ens, mnt] = rep.trim().split('|').map(s => (s || '').trim());
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) $('f-date').value = date;
     $('f-ens').value = ens || ''; $('f-mnt').value = mnt || '';
     majNom();
     setStatus(date && ens && mnt ? 'Vérifie le nom, puis envoie.' : 'Complète les champs vides, puis envoie.');
   } catch (e) {
+    if (sid !== session) return;
     setStatus('Lecture automatique impossible : complète les champs.', 'ko');
   }
 }
@@ -292,6 +298,7 @@ $('recadrer').onclick = showCrop;
 // ---------- Photo ----------
 $('cam').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
+  session++; $('annuler').style.display = 'block';
   setStatus('Chargement de la photo…');
   const img = await createImageBitmap(f, { imageOrientation: 'from-image' });
   const maxSide = 1800, k = Math.min(1, maxSide / Math.max(img.width, img.height));
@@ -309,15 +316,27 @@ $('cam').addEventListener('change', async e => {
 $('send').onclick = async () => {
   const nom = nomFichier();
   if (/DATE|ENSEIGNE|MONTANT/.test(nom) && !confirm('Des champs sont vides. Envoyer quand même ?\n' + nom)) return;
+  const sid = session;
   $('send').disabled = true; setStatus('Envoi en cours…');
   try {
     const rep = await appel({ action: 'envoyer', filename: nom, data: await buildPdf() });
+    if (sid !== session) return;
     if (rep.trim() !== 'OK') { localStorage.removeItem('cle'); CLE = ''; throw new Error('code secret refusé'); }
     setStatus('✅ Envoyé : ' + nom, 'ok');
-    ['preview', 'actions', 'form'].forEach(id => $(id).style.display = 'none');
+    ['preview', 'actions', 'form', 'annuler'].forEach(id => $(id).style.display = 'none');
   } catch (err) {
+    if (sid !== session) return;
     setStatus('Envoi non abouti, réessaie (' + err.message + ')', 'ko'); $('send').disabled = false;
   }
+};
+
+// ---------- Annuler ----------
+$('annuler').onclick = () => {
+  session++; try { if (ctrl) ctrl.abort(); } catch (_) {}
+  ['cropbox', 'preview', 'actions', 'form', 'annuler'].forEach(id => $(id).style.display = 'none');
+  $('send').disabled = true; pdfB64 = null;
+  ['f-date', 'f-ens', 'f-mnt'].forEach(id => $(id).value = ''); majNom();
+  setStatus('Ticket annulé. Vous pouvez en photographier un autre.');
 };
 
 // ---------- Mise à jour de l'appli (le code secret est conservé) ----------
