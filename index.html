@@ -32,7 +32,7 @@
 </style>
 </head>
 <body>
-<header>🍾 Scan tickets — Passerelle <small style="opacity:.6">v4</small></header>
+<header>🍾 Scan tickets — Passerelle <small style="opacity:.6">v5</small></header>
 <main>
   <label class="btn primary" for="cam">📷 Photographier un ticket</label>
   <input id="cam" type="file" accept="image/*" capture="environment">
@@ -80,6 +80,13 @@ function assureCle() {
     if (CLE) localStorage.setItem('cle', CLE);
   }
 }
+let QUI = localStorage.getItem('qui') || '';
+function assureQui() {
+  if (!QUI) {
+    QUI = (prompt("Ton prénom (à saisir une seule fois) :") || '').trim();
+    if (QUI) localStorage.setItem('qui', QUI);
+  }
+}
 // ======================
 
 const $ = id => document.getElementById(id);
@@ -121,8 +128,8 @@ async function buildPdf() {
 }
 
 async function appel(payload) {
-  assureCle();
-  const r = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cle: CLE, ...payload }) });
+  assureCle(); assureQui();
+  const r = await fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cle: CLE, qui: QUI, ...payload }) });
   if (!r.ok) throw new Error(r.status);
   return r.text();
 }
