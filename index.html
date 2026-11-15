@@ -32,7 +32,7 @@
 </style>
 </head>
 <body>
-<header>🍾 Scan tickets — Passerelle <small style="opacity:.6">v3</small></header>
+<header>🍾 Scan tickets — Passerelle <small style="opacity:.6">v4</small></header>
 <main>
   <label class="btn primary" for="cam">📷 Photographier un ticket</label>
   <input id="cam" type="file" accept="image/*" capture="environment">
@@ -66,6 +66,7 @@
 
   <button class="send" id="send" disabled>Envoyer vers SharePoint</button>
   <div id="status"></div>
+  <button class="ghost" id="maj" style="font-size:15px;padding:12px">🔄 Mettre à jour l'appli</button>
 </main>
 
 <script>
@@ -310,6 +311,15 @@ $('send').onclick = async () => {
   } catch (err) {
     setStatus('Envoi non abouti, réessaie (' + err.message + ')', 'ko'); $('send').disabled = false;
   }
+};
+
+// ---------- Mise à jour de l'appli (le code secret est conservé) ----------
+$('maj').onclick = async () => {
+  setStatus('Mise à jour…');
+  try { for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); } catch (_) {}
+  try { for (const k of await caches.keys()) await caches.delete(k); } catch (_) {}
+  try { await Promise.all([location.pathname, 'index.html', 'manifest.json', 'sw.js'].map(u => fetch(u, { cache: 'reload' }))); } catch (_) {}
+  location.reload();
 };
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
